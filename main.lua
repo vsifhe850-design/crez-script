@@ -1,5 +1,5 @@
 -- +1 upgrade per kill — cheat menu (luau, executor)
--- Added: Skeleton ESP, slider pooling, cached character refs.
+-- Removed: Skeleton ESP.
 
 local Players     = game:GetService("Players")
 local RunService  = game:GetService("RunService")
@@ -13,7 +13,6 @@ pcall(function() vim = game:GetService("VirtualInputManager") end)
 
 local Cfg = {
     espEnabled = true, espName = true, espDist = true, espHealth = true,
-    espSkeleton = true,
     espWhite = false,
     espMaxDist = 2000, espScale = 1.0, nameSize = 18,
     espColor = Color3.fromRGB(0, 255, 0),
@@ -23,7 +22,7 @@ local Cfg = {
     afkEnabled = true, afkInterval = 10, guiOpen = true
 }
 
-local pool, skeletonCache, Connections = {}, {}, {}
+local pool, Connections = {}, {}
 local sprintState, baseWalk, lastAfk = false, 16, 0
 local activeSlider = nil
 
@@ -47,42 +46,8 @@ local function getAimPart(char)
         or char:FindFirstChildWhichIsA("BasePart")
 end
 
--- r15/r6 pairs для скелета
-local BonePairs = {
-    R15 = {
-        {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"},
-        {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, {"LeftLowerArm", "LeftHand"},
-        {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"RightLowerArm", "RightHand"},
-        {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LeftLowerLeg", "LeftFoot"},
-        {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}, {"RightLowerLeg", "RightFoot"},
-    },
-    R6 = {
-        {"Head", "Torso"}, {"Torso", "Left Arm"}, {"Torso", "Right Arm"},
-        {"Torso", "Left Leg"}, {"Torso", "Right Leg"},
-    }
-}
-
-local function getSkeleton(char)
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return nil end
-    local rig = humanoid.RigType == Enum.HumanoidRigType.R15 and "R15" or "R6"
-    local pairs_ = BonePairs[rig]
-    if not pairs_ then return nil end
-    local cached = skeletonCache[char]
-    if cached and cached.rig == rig then return cached end
-    local lines = {}
-    for i = 1, #pairs_ do
-        lines[i] = Drawing.new("Line")
-        lines[i].Thickness = 1
-    end
-    local entry = { rig = rig, lines = lines, pairs = pairs_ }
-    skeletonCache[char] = entry
-    return entry
-end
-
 local function hideEsp(e)
     e.n.Visible, e.d.Visible, e.h.Visible = false, false, false
-    if e.sk then for _, l in ipairs(e.sk.lines) do l.Visible = false end end
 end
 
 local function renderPlayer(player)
@@ -139,32 +104,6 @@ local function renderPlayer(player)
         e.h.Position, e.h.Color = Vector2.new(sp.X, y + 18 * sc), col
         e.h.Visible = true
     else e.h.Visible = false end
-
-    -- skeleton
-    if Cfg.espSkeleton then
-        local sk = getSkeleton(char)
-        if sk then
-            for i, pair in ipairs(sk.pairs) do
-                local a = char:FindFirstChild(pair[1])
-                local b = char:FindFirstChild(pair[2])
-                local line = sk.lines[i]
-                if a and b then
-                    local pa, onA = Camera:WorldToViewportPoint(a.Position)
-                    local pb, onB = Camera:WorldToViewportPoint(b.Position)
-                    if onA and onB then
-                        line.From, line.To = Vector2.new(pa.X, pa.Y), Vector2.new(pb.X, pb.Y)
-                        line.Color, line.Visible = col, true
-                    else
-                        line.Visible = false
-                    end
-                else
-                    line.Visible = false
-                end
-            end
-        end
-    else
-        if e.sk then for _, l in ipairs(e.sk.lines) do l.Visible = false end end
-    end
 end
 
 local function cleanupEsp()
@@ -175,13 +114,6 @@ local function cleanupEsp()
         if not active[p] then
             e.n:Remove(); e.d:Remove(); e.h:Remove()
             pool[p] = nil
-        end
-    end
-
-    for char, sk in pairs(skeletonCache) do
-        if not char.Parent then
-            for _, l in ipairs(sk.lines) do l:Remove() end
-            skeletonCache[char] = nil
         end
     end
 end
@@ -432,7 +364,6 @@ local function makeBindRow(parent, label, key)
 end
 
 local espCard = makeFeature("ESP", "espEnabled")
-makeSubToggle(espCard.panel, "Skeleton", "espSkeleton", espCard)
 makeSubToggle(espCard.panel, "Full White", "espWhite", espCard)
 makeSubSlider(espCard.panel, "Max dist", "espMaxDist", 100, 5000, true)
 makeColorPicker(espCard.panel, "espColor", espCard)
@@ -470,9 +401,6 @@ track(RunService.RenderStepped:Connect(function()
         cleanupEsp()
     else
         for _, e in pairs(pool) do hideEsp(e) end
-        for _, sk in pairs(skeletonCache) do
-            for _, l in ipairs(sk.lines) do l.Visible = false end
-        end
     end
 end))
 
@@ -523,7 +451,6 @@ getgenv().CrezUnload = function()
     for _, c in ipairs(Connections) do pcall(function() c:Disconnect() end) end
     Connections = {}
     for _, e in pairs(pool) do e.n:Remove(); e.d:Remove(); e.h:Remove() end
-    for _, sk in pairs(skeletonCache) do for _, l in ipairs(sk.lines) do l:Remove() end end
-    pool, skeletonCache = {}, {}
+    pool = {}
     gui:Destroy()
 end
